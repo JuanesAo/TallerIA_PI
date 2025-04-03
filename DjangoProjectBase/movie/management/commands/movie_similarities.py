@@ -6,16 +6,30 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 class Command(BaseCommand):
-    help = "Compare two movies and optionally a prompt using OpenAI embeddings"
+    help = "Compare multiple movie pairs and prompts using OpenAI embeddings"
 
     def handle(self, *args, **kwargs):
-        # ✅ Load OpenAI API key
         load_dotenv('../api_keys.env')
         client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
-        # ✅ Change these titles for any movies you want to compare
-        movie1 = Movie.objects.get(title="La lista de Schindler")
-        movie2 = Movie.objects.get(title="El club de la pelea")
+        
+        comparisons = [
+            {
+                "movie1": "Frankenstein",
+                "movie2": "The Great Train Robbery",
+                "prompt": "película clásica de terror"
+            },
+            {
+                "movie1": "The Life and Death of King Richard III",
+                "movie2": "Cabiria",
+                "prompt": "película histórica"
+            },
+            {
+                "movie1": "The Avenging Conscience or Thou Shalt Not Kill",
+                "movie2": "Oppenheimer",
+                "prompt": "película sobre culpa y moralidad"
+            }
+        ]
 
         def get_embedding(text):
             response = client.embeddings.create(
@@ -27,20 +41,23 @@ class Command(BaseCommand):
         def cosine_similarity(a, b):
             return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-        # ✅ Generate embeddings of both movies
-        emb1 = get_embedding(movie1.description)
-        emb2 = get_embedding(movie2.description)
+        for combo in comparisons:
+            try:
+                movie1 = Movie.objects.get(title=combo["movie1"])
+                movie2 = Movie.objects.get(title=combo["movie2"])
+            except Movie.DoesNotExist:
+                self.stdout.write(f"❗ No encontré una de las películas: '{combo['movie1']}' o '{combo['movie2']}'")
+                continue
 
-        # ✅ Compute similarity between movies
-        similarity = cosine_similarity(emb1, emb2)
-        self.stdout.write(f"\U0001F3AC Similaridad entre '{movie1.title}' y '{movie2.title}': {similarity:.4f}")
+            emb1 = get_embedding(movie1.description)
+            emb2 = get_embedding(movie2.description)
+            similarity = cosine_similarity(emb1, emb2)
 
-        # ✅ Optional: Compare against a prompt
-        prompt = "película sobre la Segunda Guerra Mundial"
-        prompt_emb = get_embedding(prompt)
+            prompt_emb = get_embedding(combo["prompt"])
+            sim_prompt_movie1 = cosine_similarity(prompt_emb, emb1)
+            sim_prompt_movie2 = cosine_similarity(prompt_emb, emb2)
 
-        sim_prompt_movie1 = cosine_similarity(prompt_emb, emb1)
-        sim_prompt_movie2 = cosine_similarity(prompt_emb, emb2)
-
-        self.stdout.write(f"\U0001F4DD Similitud prompt vs '{movie1.title}': {sim_prompt_movie1:.4f}")
-        self.stdout.write(f"\U0001F4DD Similitud prompt vs '{movie2.title}': {sim_prompt_movie2:.4f}")
+            self.stdout.write(f"\n🎬 Comparación: '{movie1.title}' vs '{movie2.title}'")
+            self.stdout.write(f"📊 Similaridad entre películas: {similarity:.4f}")
+            self.stdout.write(f"📝 Similaridad prompt vs '{movie1.title}': {sim_prompt_movie1:.4f}")
+            self.stdout.write(f"📝 Similaridad prompt vs '{movie2.title}': {sim_prompt_movie2:.4f}")

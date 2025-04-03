@@ -1,73 +1,51 @@
 import os
-import requests
-from openai import OpenAI
 from django.core.management.base import BaseCommand
 from movie.models import Movie
-from dotenv import load_dotenv
+from django.core.files import File
 
 class Command(BaseCommand):
-    help = "Generate images with OpenAI and update movie image field"
+    help = "Update movie images in the database from a folder in media/movie/images"
 
     def handle(self, *args, **kwargs):
-        # ✅ Load environment variables from the .env file
-        load_dotenv('../api_keys.env')
+        # 📂 Ruta de la carpeta de imágenes
+        image_folder = 'media/movie/images'  # Cambia esta ruta si es necesario
 
-        # ✅ Initialize the OpenAI client with the API key
-        client = OpenAI(
-            api_key=os.environ.get('OPENAI_API_KEY'),
-        )
-        # ✅ Folder to save images
-        images_folder = 'media/movie/images/'
-        os.makedirs(images_folder, exist_ok=True)
+        # ✅ Verifica si la carpeta existe
+        if not os.path.exists(image_folder):
+            self.stderr.write(f"Image folder '{image_folder}' not found.")
+            return
 
-        # ✅ Fetch all movies
-        movies = Movie.objects.all()
-        self.stdout.write(f"Found {movies.count()} movies")
+        updated_count = 0
 
-        for movie in movies:
+        # 🔄 Itera sobre los archivos en la carpeta
+        for image_file in os.listdir(image_folder):
+            # Asegúrate de que sea un archivo de imagen
+            if not image_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                continue
+
+            # Obtén el título de la película eliminando el prefijo 'm_' y la extensión
+            if image_file.startswith('m_'):
+                title = os.path.splitext(image_file)[0][2:]  # Elimina 'm_' del inicio
+            else:
+                self.stderr.write(f"Skipping file with unexpected format: {image_file}")
+                continue
+
             try:
-                # ✅ Call the helper function
-                image_relative_path = self.generate_and_download_image(client, movie.title, images_folder)
+                # Busca la película por título
+                movie = Movie.objects.get(title=title)
 
-                # ✅ Update database
-                movie.image = image_relative_path
-                movie.save()
-                self.stdout.write(self.style.SUCCESS(f"Saved and updated image for: {movie.title}"))
+                # Actualiza la imagen de la película
+                image_path = os.path.join(image_folder, image_file)
+                with open(image_path, 'rb') as img_file:
+                    movie.image.save(image_file, File(img_file), save=True)
 
+                updated_count += 1
+                self.stdout.write(self.style.SUCCESS(f"Updated image for: {title}"))
+
+            except Movie.DoesNotExist:
+                self.stderr.write(f"Movie not found: {title}")
             except Exception as e:
-                self.stderr.write(f"Failed for {movie.title}: {e}")
+                self.stderr.write(f"Failed to update image for {title}: {str(e)}")
 
-            # 🔎 Process just the first movie for demonstration
-            break
-
-        self.stdout.write(self.style.SUCCESS("Process finished (only first movie updated)."))
-
-    def generate_and_download_image(self, client, movie_title, save_folder):
-        """
-        Generates an image using OpenAI's DALL·E model and downloads it.
-        Returns the relative image path or raises an exception.
-        """
-        prompt = f"Movie poster of {movie_title}"
-
-        # ✅ Generate image with OpenAI
-        response = client.images.generate(
-            model="dall-e-2",
-            prompt=prompt,
-            size="256x256",
-            quality="standard",
-            n=1,
-        )
-        image_url = response.data[0].url
-
-        # ✅ Prepare the filename and full save path
-        image_filename = f"m_{movie_title}.png"
-        image_path_full = os.path.join(save_folder, image_filename)
-
-        # ✅ Download the image
-        image_response = requests.get(image_url)
-        image_response.raise_for_status()
-        with open(image_path_full, 'wb') as f:
-            f.write(image_response.content)
-
-        # ✅ Return relative path to be saved in the DB
-        return os.path.join('movie/images', image_filename)
+        # ✅ Al finalizar, muestra cuántas imágenes se actualizaron
+        self.stdout.write(self.style.SUCCESS(f"Finished updating images for {updated_count} movies."))
