@@ -25,10 +25,9 @@ class Command(BaseCommand):
                 new_description = row['Updated Description']
 
                 try:
-                    # ❗ Buscar la película por título
                     movie = Movie.objects.get(title=title)
 
-                    # ❗ Actualizar la descripción de la película
+    # Actualizar la descripción de la película
                     movie.description = new_description
                     movie.save()
                     updated_count += 1

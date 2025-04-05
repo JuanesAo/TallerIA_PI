@@ -1,51 +1,45 @@
 import os
+import unicodedata
 from django.core.management.base import BaseCommand
 from movie.models import Movie
-from django.core.files import File
 
 class Command(BaseCommand):
-    help = "Update movie images in the database from a folder in media/movie/images"
+    help = 'Asigna imágenes a las películas desde la carpeta movie/images/'
 
     def handle(self, *args, **kwargs):
-        # 📂 Ruta de la carpeta de imágenes
-        image_folder = 'media/movie/images'  # Cambia esta ruta si es necesario
-
-        # ✅ Verifica si la carpeta existe
-        if not os.path.exists(image_folder):
-            self.stderr.write(f"Image folder '{image_folder}' not found.")
-            return
-
+        images_folder = 'movie/images/'
         updated_count = 0
+        not_found = []
 
-        # 🔄 Itera sobre los archivos en la carpeta
-        for image_file in os.listdir(image_folder):
-            # Asegúrate de que sea un archivo de imagen
-            if not image_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-                continue
+        # Normaliza los textos: quita tildes, minúsculas
+        def normalize(text):
+            text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+            text = text.lower().strip()
+            return text
 
-            # Obtén el título de la película eliminando el prefijo 'm_' y la extensión
-            if image_file.startswith('m_'):
-                title = os.path.splitext(image_file)[0][2:]  # Elimina 'm_' del inicio
-            else:
-                self.stderr.write(f"Skipping file with unexpected format: {image_file}")
-                continue
+        # Diccionario {titulo_normalizado: nombre_imagen}
+        image_files = os.listdir(images_folder)
+        normalized_images = {}
+        for f in image_files:
+            if f.endswith('.png'):
+                name = f[2:-4]  # quitar 'm_' y '.png'
+                normalized_images[normalize(name)] = f
 
-            try:
-                # Busca la película por título
-                movie = Movie.objects.get(title=title)
+        # Recorre las películas
+        for movie in Movie.objects.all():
+            normalized_title = normalize(movie.title)
+            image_name = normalized_images.get(normalized_title)
 
-                # Actualiza la imagen de la película
-                image_path = os.path.join(image_folder, image_file)
-                with open(image_path, 'rb') as img_file:
-                    movie.image.save(image_file, File(img_file), save=True)
-
+            if image_name:
+                movie.image = f'movie/images/{image_name}'
+                movie.save()
                 updated_count += 1
-                self.stdout.write(self.style.SUCCESS(f"Updated image for: {title}"))
+                self.stdout.write(f"✅ Imagen asignada: {movie.title} -> {image_name}")
+            else:
+                not_found.append(movie.title)
 
-            except Movie.DoesNotExist:
-                self.stderr.write(f"Movie not found: {title}")
-            except Exception as e:
-                self.stderr.write(f"Failed to update image for {title}: {str(e)}")
-
-        # ✅ Al finalizar, muestra cuántas imágenes se actualizaron
-        self.stdout.write(self.style.SUCCESS(f"Finished updating images for {updated_count} movies."))
+        self.stdout.write(f"\n🎯 {updated_count} imágenes actualizadas.")
+        if not_found:
+            self.stdout.write("⚠️ No se encontró imagen para:")
+            for title in not_found:
+                self.stdout.write(f" - {title}")

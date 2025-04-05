@@ -10,14 +10,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         # ✅ Load environment variables from the .env file
-        load_dotenv('../openAI.env')
+        load_dotenv('./api_keys.env')
 
         # ✅ Initialize the OpenAI client with the API key
         client = OpenAI(
-            api_key=os.environ.get('openai_apikey'),
+            api_key=os.environ.get('OPENAI_API_KEY'),
         )
         # ✅ Folder to save images
-        images_folder = 'media/movie/images/'
+        images_folder = 'movie/images/'
         os.makedirs(images_folder, exist_ok=True)
 
         # ✅ Fetch all movies

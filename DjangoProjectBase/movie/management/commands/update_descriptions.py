@@ -9,7 +9,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         # ✅ Load environment variables from the .env file
-        load_dotenv('../api_keys.env')
+        load_dotenv('./api_keys.env')
 
         # ✅ Initialize the OpenAI client with the API key
         client = OpenAI(
